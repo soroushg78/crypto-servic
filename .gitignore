@@ -1,0 +1,36 @@
+# Binaries & Executables
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Test artifacts & Coverage
+*.out
+*.test
+coverage.txt
+
+# Environment & Secrets (Never commit real credentials)
+.env
+.env.*
+!.env.example
+
+# Local Documentation / Visual Helper
+# (اگر نمی‌خواهید مستندات بصری در گیت پوش شود فعال بماند)
+architecture.html
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
