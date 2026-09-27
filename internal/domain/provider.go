@@ -2,10 +2,12 @@ package domain
 
 import "context"
 
+type PaymentStatus = InvoiceStatus
+
 type CreateInvoiceRequest struct {
 	OrderID     string
 	Amount      float64
-	Currency    Currency
+	Currency    string
 	Network     string
 	Description string
 }
@@ -17,7 +19,7 @@ type InvoiceResponse struct {
 }
 
 type PaymentStatusResponse struct {
-	Status PaymentStatus
+	Status InvoiceStatus
 	TxHash string
 }
 

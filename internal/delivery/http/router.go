@@ -1,72 +1,34 @@
 package http
 
 import (
-	"log/slog"
 	"net/http"
-	"time"
 )
 
-type Router struct {
-	mux *http.ServeMux
-}
-
-func NewRouter(h *Handler) http.Handler {
+func NewRouter(
+	healthH *HealthHandler,
+	catalogH *CatalogHandler,
+	invoiceH *InvoiceHandler,
+) http.Handler {
 	mux := http.NewServeMux()
 
-	// Health check
-	mux.HandleFunc("GET /health", h.HealthCheck)
+	// 1. Health check
+	mux.HandleFunc("GET /health", healthH.HealthCheck)
 
-	// Payments API
-	mux.HandleFunc("POST /api/v1/payments", h.CreatePayment)
-	mux.HandleFunc("GET /api/v1/payments", h.ListPayments)
-	mux.HandleFunc("GET /api/v1/payments/{id}", h.GetPayment)
-	mux.HandleFunc("GET /api/v1/orders/{order_id}/payment", h.GetPaymentByOrderID)
+	// 2. Catalog routes (Services, Networks, Currencies)
+	mux.HandleFunc("GET /api/v1/services", catalogH.ListServices)
+	mux.HandleFunc("GET /api/v1/networks", catalogH.ListNetworks)
+	mux.HandleFunc("GET /api/v1/networks/{network_id}/currencies", catalogH.ListCurrencies)
 
-	// Apply Middlewares
+	// 3. Invoice routes
+	mux.HandleFunc("POST /api/v1/invoices", invoiceH.CreateInvoice)
+	mux.HandleFunc("GET /api/v1/invoices/{id}", invoiceH.GetInvoice)
+	mux.HandleFunc("GET /api/v1/invoices/number/{number}", invoiceH.GetInvoiceByNumber)
+
+	// Apply Middlewares in chain
 	var handler http.Handler = mux
-	handler = corsMiddleware(handler)
-	handler = loggingMiddleware(handler)
-	handler = recoveryMiddleware(handler)
+	handler = CorsMiddleware(handler)
+	handler = LoggingMiddleware(handler)
+	handler = RecoveryMiddleware(handler)
 
 	return handler
-}
-
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		slog.Info("HTTP Request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"remote_addr", r.RemoteAddr,
-			"duration", time.Since(start),
-		)
-	})
-}
-
-func recoveryMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if rec := recover(); rec != nil {
-				slog.Error("Recovered from panic in HTTP handler", "panic", rec)
-				writeError(w, http.StatusInternalServerError, "internal server error")
-			}
-		}()
-		next.ServeHTTP(w, r)
-	})
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
 }

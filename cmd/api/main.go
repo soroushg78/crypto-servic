@@ -13,8 +13,6 @@ import (
 
 	"wallet-observer/internal/config"
 	httpDelivery "wallet-observer/internal/delivery/http"
-	"wallet-observer/internal/domain"
-	"wallet-observer/internal/provider/ton"
 	"wallet-observer/internal/repository/postgres"
 	"wallet-observer/internal/usecase"
 	"wallet-observer/pkg/logger"
@@ -40,27 +38,37 @@ func main() {
 	}
 	defer pool.Close()
 
-	// 5. Run Database Migrations / Schema Check
+	// 5. Run Database Migrations & Seeds
 	if err := postgres.AutoMigrate(ctx, pool); err != nil {
 		slog.Warn("Failed running database auto-migrations", "error", err)
 	}
 
-	// 6. Initialize Repositories
-	paymentRepo := postgres.NewPaymentRepository(pool)
+	// 6. Initialize Separated Repositories (SOLID - SRP)
+	serviceRepo := postgres.NewServiceRepository(pool)
+	networkRepo := postgres.NewNetworkRepository(pool)
+	currencyRepo := postgres.NewCurrencyRepository(pool)
+	userRepo := postgres.NewUserRepository(pool)
+	addressRepo := postgres.NewDepositAddressRepository(pool)
+	invoiceRepo := postgres.NewInvoiceRepository(pool)
 
-	// 7. Initialize Direct Blockchain Providers (Node / Validator RPC)
-	tonProvider := ton.New(cfg.Providers.TonEndpoint, cfg.Providers.TonAPIKey)
+	// 7. Initialize Separated Use Cases (SOLID - SRP)
+	catalogUC := usecase.NewCatalogUseCase(serviceRepo, networkRepo, currencyRepo)
+	invoiceUC := usecase.NewInvoiceUseCase(
+		invoiceRepo,
+		serviceRepo,
+		currencyRepo,
+		networkRepo,
+		userRepo,
+		addressRepo,
+	)
 
-	providers := map[string]domain.PaymentProvider{
-		tonProvider.Name(): tonProvider,
-	}
+	// 8. Initialize Separated HTTP Handlers (SOLID - SRP)
+	healthHandler := httpDelivery.NewHealthHandler()
+	catalogHandler := httpDelivery.NewCatalogHandler(catalogUC)
+	invoiceHandler := httpDelivery.NewInvoiceHandler(invoiceUC)
 
-	// 8. Initialize Usecases
-	paymentUC := usecase.NewPaymentUseCase(paymentRepo, providers)
-
-	// 9. Initialize HTTP Delivery & Routes
-	handler := httpDelivery.NewHandler(paymentUC)
-	router := httpDelivery.NewRouter(handler)
+	// 9. Wire Router with Handlers & Middlewares
+	router := httpDelivery.NewRouter(healthHandler, catalogHandler, invoiceHandler)
 
 	addr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	server := &http.Server{
